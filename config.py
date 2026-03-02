@@ -19,25 +19,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 TEMP_DIR.mkdir(exist_ok=True)
 
 # Generation Settings
-DEFAULT_BATCH_SIZE = 15
-MIN_BATCH_SIZE = 10
+DEFAULT_BATCH_SIZE = 10
+MIN_BATCH_SIZE = 1
 MAX_BATCH_SIZE = 20
-
-# Supported themes with display names
-THEMES = {
-    "cinematic": "🎬 Cinematic",
-    "vintage": "📷 Vintage",
-    "beach": "🏖️ Beach",
-    "streetwear": "👟 Streetwear",
-    "minimalist": "⚪ Minimalist",
-    "dark_aesthetic": "🌑 Dark Aesthetic",
-    "nature": "🌿 Nature",
-    "urban": "🏙️ Urban",
-    "luxury": "💎 Luxury",
-    "casual": "😎 Casual",
-    "formal": "👔 Formal",
-    "artistic": "🎨 Artistic",
-}
 
 # Gender options
 GENDERS = {

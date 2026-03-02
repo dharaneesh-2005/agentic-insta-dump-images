@@ -96,13 +96,6 @@ def main():
             horizontal=True
         )
         
-        # Theme selection
-        theme = st.selectbox(
-            "Select Theme:",
-            options=list(config.THEMES.keys()),
-            format_func=lambda x: config.THEMES[x]
-        )
-        
         # Number of images
         num_images = st.slider(
             "Number of Images:",
@@ -153,14 +146,14 @@ def main():
             st.image(uploaded_file_2, caption="Body Photo Preview", width="stretch")
     
     with col2:
-        st.subheader("🎨 Selected Style")
+        st.subheader("🎨 Generation Settings")
         
-        # Show selected theme info
-        st.info(f"**Theme:** {config.THEMES[theme]}\n\n**Gender:** {config.GENDERS[gender]}\n\n**Images:** {num_images}")
+        # Show selected settings
+        st.info(f"**Gender:** {config.GENDERS[gender]}\n\n**Images:** {num_images}")
         
         # Sample prompts preview
         prompt_engine = PromptEngine()
-        sample_prompts = prompt_engine.get_prompts(gender, theme, min(3, num_images))
+        sample_prompts = prompt_engine.get_prompts(gender, "prompts", min(3, num_images))
         
         with st.expander("👁️ Preview Sample Prompts"):
             for i, prompt in enumerate(sample_prompts, 1):
@@ -210,7 +203,6 @@ def main():
                         results = generator.generate_batch(
                             image_paths=image_paths,
                             gender=gender,
-                            theme=theme,
                             count=num_images,
                             progress_callback=progress_callback
                         )
@@ -221,8 +213,8 @@ def main():
                         # Create ZIP archive
                         if results:
                             timestamp = int(time.time())
-                            zip_path = config.OUTPUT_DIR / f"{gender}_{theme}_{timestamp}.zip"
-                            create_zip_archive(results, zip_path, gender, theme)
+                            zip_path = config.OUTPUT_DIR / f"{gender}_{timestamp}.zip"
+                            create_zip_archive(results, zip_path, gender, "prompts")
                             st.session_state.zip_path = zip_path
                         
                         st.success(f"✅ Successfully generated {len(results)} images!")
@@ -263,7 +255,7 @@ def main():
                 st.download_button(
                     label=f"⬇️ #{idx+1}",
                     data=img_bytes,
-                    file_name=f"{gender}_{theme}_image_{idx+1:02d}.png",
+                    file_name=f"{gender}_image_{idx+1:02d}.png",
                     mime="image/png",
                     key=f"download_{idx}"
                 )

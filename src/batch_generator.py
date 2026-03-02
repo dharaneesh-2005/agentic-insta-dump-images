@@ -1,6 +1,7 @@
 """Batch generation logic for creating multiple images."""
 import random
 import time
+import copy
 from pathlib import Path
 from typing import List, Callable, Optional, Tuple, Dict
 from PIL import Image
@@ -25,19 +26,19 @@ class BatchGenerator:
                  prompt_engine: PromptEngine = None):
         self.client = comfyui_client or ComfyUIClient()
         self.prompt_engine = prompt_engine or PromptEngine()
-        self.workflow_template = None
+        self._workflow_template = None
         
     def _load_workflow(self) -> dict:
-        """Load the workflow template."""
-        if self.workflow_template is None:
-            self.workflow_template = load_workflow_template()
-        return self.workflow_template.copy()
+        """Load the workflow template - creates a fresh deep copy each time."""
+        if self._workflow_template is None:
+            self._workflow_template = load_workflow_template()
+        # Return a deep copy to ensure each workflow is independent
+        return copy.deepcopy(self._workflow_template)
     
     def generate_batch_queued(
         self,
         image_paths: List[Path],
         gender: str,
-        theme: str,
         count: int = 15,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         save_dir: Path = None
@@ -50,8 +51,7 @@ class BatchGenerator:
         Args:
             image_paths: List of paths to 2 uploaded images
             gender: "male" or "female"
-            theme: Theme name
-            count: Number of images to generate (10-20)
+            count: Number of images to generate (1-20)
             progress_callback: Function(current, total, status) to call for progress updates
             save_dir: Directory to save generated images
             
@@ -63,8 +63,8 @@ class BatchGenerator:
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
         
-        # Get prompts for this batch
-        prompts = self.prompt_engine.get_prompts(gender, theme, count)
+        # Get prompts for this batch (no theme, just gender-based prompts)
+        prompts = self.prompt_engine.get_prompts(gender, "prompts", count)
         
         # Upload images once (reused for all generations)
         if progress_callback:
@@ -120,7 +120,7 @@ class BatchGenerator:
                     
                     # Save image
                     timestamp = int(time.time())
-                    filename = f"{gender}_{theme}_{timestamp}_{i}_{seed}.png"
+                    filename = f"{gender}_{timestamp}_{i}_{seed}.png"
                     filepath = save_dir / filename
                     image.save(filepath, "PNG")
                     
@@ -142,7 +142,6 @@ class BatchGenerator:
         self,
         image_paths: List[Path],
         gender: str,
-        theme: str,
         count: int = 15,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         save_dir: Path = None
@@ -152,8 +151,7 @@ class BatchGenerator:
         Args:
             image_paths: List of paths to 2 uploaded images
             gender: "male" or "female"
-            theme: Theme name
-            count: Number of images to generate (10-20)
+            count: Number of images to generate (1-20)
             progress_callback: Function(current, total, status) to call for progress updates
             save_dir: Directory to save generated images
             
@@ -164,7 +162,6 @@ class BatchGenerator:
         return self.generate_batch_queued(
             image_paths=image_paths,
             gender=gender,
-            theme=theme,
             count=count,
             progress_callback=progress_callback,
             save_dir=save_dir
@@ -207,10 +204,10 @@ class BatchGenerator:
 
 
 def create_zip_archive(
-    images: List[Tuple[Image.Image, str, int]], 
+    images: List[Tuple[Image.Image, str, int]],
     output_path: Path,
     gender: str,
-    theme: str
+    prompt_set: str
 ) -> Path:
     """Create a ZIP archive of generated images.
     
@@ -218,7 +215,7 @@ def create_zip_archive(
         images: List of (image, prompt, seed) tuples
         output_path: Path for the ZIP file
         gender: Gender used for generation
-        theme: Theme used for generation
+        prompt_set: Prompt set used for generation
         
     Returns:
         Path to created ZIP file
@@ -236,13 +233,13 @@ def create_zip_archive(
             img_bytes = img_buffer.getvalue()
             
             # Add to ZIP
-            filename = f"{gender}_{theme}_image_{i+1:02d}.png"
+            filename = f"{gender}_image_{i+1:02d}.png"
             zf.writestr(filename, img_bytes)
         
         # Add metadata file
         metadata = f"Generation Details:\n"
         metadata += f"Gender: {gender}\n"
-        metadata += f"Theme: {theme}\n"
+        metadata += f"Prompt Set: {prompt_set}\n"
         metadata += f"Total Images: {len(images)}\n\n"
         metadata += "Prompts used:\n"
         for i, (_, prompt, seed) in enumerate(images):
