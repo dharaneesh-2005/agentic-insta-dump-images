@@ -31,8 +31,10 @@ class PromptEngine:
         else:
             with open(prompt_file, "r", encoding="utf-8") as f:
                 content = f.read()
-                # Split by blank lines or newlines, filter empty lines
-                prompts = [p.strip() for p in content.split("\n") if p.strip()]
+                # Split by double newlines (blank lines) to separate full multi-line prompts
+                # Each prompt is separated by an empty line
+                raw_prompts = content.split("\n\n")
+                prompts = [p.strip() for p in raw_prompts if p.strip()]
         
         self._cache[cache_key] = prompts
         return prompts
