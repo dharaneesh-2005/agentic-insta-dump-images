@@ -147,10 +147,10 @@ def main():
         
         # Preview uploaded images
         if uploaded_file_1:
-            st.image(uploaded_file_1, caption="Face Photo Preview", width=None)
+            st.image(uploaded_file_1, caption="Face Photo Preview", width="stretch")
         
         if uploaded_file_2:
-            st.image(uploaded_file_2, caption="Body Photo Preview", width=None)
+            st.image(uploaded_file_2, caption="Body Photo Preview", width="stretch")
     
     with col2:
         st.subheader("🎨 Selected Style")
@@ -253,7 +253,7 @@ def main():
         cols = st.columns(4)
         for idx, (image, prompt, seed) in enumerate(st.session_state.generated_images):
             with cols[idx % 4]:
-                st.image(image, width=None)
+                st.image(image)
                 
                 # Individual download
                 img_buffer = io.BytesIO()
