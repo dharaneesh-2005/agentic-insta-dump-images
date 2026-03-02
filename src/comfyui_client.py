@@ -248,7 +248,7 @@ def find_nodes_by_type(workflow: Dict[str, Any], node_type: str) -> List[str]:
 
 
 def inject_images_into_workflow(
-    workflow: Dict[str, Any], 
+    workflow: Dict[str, Any],
     image_filenames: List[str],
     load_image_node_type: str = "LoadImage"
 ) -> Dict[str, Any]:
@@ -264,7 +264,7 @@ def inject_images_into_workflow(
     """
     workflow = workflow.copy()
     
-    # Find all LoadImage nodes
+    # Find all LoadImage nodes and sort by node ID for consistent ordering
     load_image_nodes = find_nodes_by_type(workflow, load_image_node_type)
     
     if len(load_image_nodes) < len(image_filenames):
@@ -272,6 +272,9 @@ def inject_images_into_workflow(
             f"Workflow has {len(load_image_nodes)} LoadImage nodes "
             f"but {len(image_filenames)} images were provided"
         )
+    
+    # Sort nodes to ensure consistent ordering (e.g., 76 before 81)
+    load_image_nodes.sort()
     
     # Inject images into nodes
     for i, filename in enumerate(image_filenames):
@@ -298,18 +301,39 @@ def inject_prompt_into_workflow(
         Modified workflow
     """
     if prompt_node_types is None:
-        prompt_node_types = ["CLIPTextEncode", "PromptText", "TextInput"]
+        prompt_node_types = ["CLIPTextEncode", "CLIPTextEncodeFlux2", "PromptText", "TextInput"]
         
     workflow = workflow.copy()
     
-    # Find prompt nodes (usually positive prompt)
+    # Find prompt nodes - look for CLIPTextEncode with "Positive" in title
+    prompt_node_id = None
+    
     for node_id, node_data in workflow.items():
         if isinstance(node_data, dict):
             class_type = node_data.get("class_type", "")
+            meta = node_data.get("_meta", {})
+            title = meta.get("title", "").lower()
+            
             if class_type in prompt_node_types:
                 inputs = node_data.get("inputs", {})
-                # Check if this looks like a positive prompt node
                 if "text" in inputs:
+                    # Prefer "Positive Prompt" node if available
+                    if "positive" in title:
+                        prompt_node_id = node_id
+                        break
+                    # Otherwise use the first one found
+                    elif prompt_node_id is None:
+                        prompt_node_id = node_id
+    
+    # Inject the prompt
+    if prompt_node_id:
+        workflow[prompt_node_id]["inputs"]["text"] = prompt
+    else:
+        # Fallback: try to find any node with "text" input
+        for node_id, node_data in workflow.items():
+            if isinstance(node_data, dict):
+                inputs = node_data.get("inputs", {})
+                if "text" in inputs and isinstance(inputs["text"], str):
                     workflow[node_id]["inputs"]["text"] = prompt
                     break
                     
@@ -321,7 +345,7 @@ def inject_seed_into_workflow(
     seed: int,
     seed_node_types: List[str] = None
 ) -> Dict[str, Any]:
-    """Inject seed into KSampler or similar nodes.
+    """Inject seed into KSampler, RandomNoise, or similar nodes.
     
     Args:
         workflow: The workflow dictionary
@@ -332,7 +356,7 @@ def inject_seed_into_workflow(
         Modified workflow
     """
     if seed_node_types is None:
-        seed_node_types = ["KSampler", "RandomSeed", "SeedInput"]
+        seed_node_types = ["KSampler", "RandomNoise", "RandomSeed", "SeedInput"]
         
     workflow = workflow.copy()
     
@@ -341,7 +365,10 @@ def inject_seed_into_workflow(
             class_type = node_data.get("class_type", "")
             if class_type in seed_node_types:
                 inputs = node_data.get("inputs", {})
+                # Different nodes use different field names for seed
                 if "seed" in inputs:
                     workflow[node_id]["inputs"]["seed"] = seed
+                elif "noise_seed" in inputs:
+                    workflow[node_id]["inputs"]["noise_seed"] = seed
                     
     return workflow
