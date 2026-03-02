@@ -2,12 +2,12 @@
 import random
 import time
 from pathlib import Path
-from typing import List, Callable, Optional, Tuple
+from typing import List, Callable, Optional, Tuple, Dict
 from PIL import Image
 import io
 
 from src.comfyui_client import (
-    ComfyUIClient, 
+    ComfyUIClient,
     load_workflow_template,
     inject_images_into_workflow,
     inject_prompt_into_workflow,
@@ -20,7 +20,7 @@ import config
 class BatchGenerator:
     """Handles batch generation of images using ComfyUI."""
     
-    def __init__(self, 
+    def __init__(self,
                  comfyui_client: ComfyUIClient = None,
                  prompt_engine: PromptEngine = None):
         self.client = comfyui_client or ComfyUIClient()
@@ -33,50 +33,7 @@ class BatchGenerator:
             self.workflow_template = load_workflow_template()
         return self.workflow_template.copy()
     
-    def generate_single(
-        self,
-        image_paths: List[Path],
-        prompt: str,
-        seed: Optional[int] = None
-    ) -> Image.Image:
-        """Generate a single image.
-        
-        Args:
-            image_paths: List of paths to uploaded images
-            prompt: The prompt text
-            seed: Random seed (generated if None)
-            
-        Returns:
-            Generated PIL Image
-        """
-        if seed is None:
-            seed = random.randint(1, 2**32 - 1)
-        
-        # Load and prepare workflow
-        workflow = self._load_workflow()
-        
-        # Upload images to ComfyUI
-        uploaded_names = []
-        for img_path in image_paths:
-            uploaded_name = self.client.upload_image(img_path)
-            uploaded_names.append(uploaded_name)
-        
-        # Inject parameters into workflow
-        workflow = inject_images_into_workflow(workflow, uploaded_names)
-        workflow = inject_prompt_into_workflow(workflow, prompt)
-        workflow = inject_seed_into_workflow(workflow, seed)
-        
-        # Execute workflow
-        images_data = self.client.execute_workflow(workflow)
-        
-        if not images_data:
-            raise ValueError("No images generated")
-        
-        # Convert first image to PIL Image
-        image = Image.open(io.BytesIO(images_data[0]))
-        return image
-    
-    def generate_batch(
+    def generate_batch_queued(
         self,
         image_paths: List[Path],
         gender: str,
@@ -85,7 +42,10 @@ class BatchGenerator:
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         save_dir: Path = None
     ) -> List[Tuple[Image.Image, str, int]]:
-        """Generate a batch of images.
+        """Generate a batch of images by queuing all at once to ComfyUI.
+        
+        This is much faster because ComfyUI keeps the model loaded
+        and processes all queued workflows sequentially without reloading.
         
         Args:
             image_paths: List of paths to 2 uploaded images
@@ -106,40 +66,109 @@ class BatchGenerator:
         # Get prompts for this batch
         prompts = self.prompt_engine.get_prompts(gender, theme, count)
         
-        results = []
+        # Upload images once (reused for all generations)
+        if progress_callback:
+            progress_callback(0, count, "Uploading images to ComfyUI...")
         
+        uploaded_names = []
+        for img_path in image_paths:
+            uploaded_name = self.client.upload_image(img_path)
+            uploaded_names.append(uploaded_name)
+        
+        # Prepare all workflows with different prompts and seeds
+        if progress_callback:
+            progress_callback(0, count, f"Preparing {count} workflows...")
+        
+        workflows = []
+        seeds = []
         for i, prompt in enumerate(prompts):
-            current_num = i + 1
-            
+            workflow = self._load_workflow()
+            workflow = inject_images_into_workflow(workflow, uploaded_names)
+            workflow = inject_prompt_into_workflow(workflow, prompt)
+            seed = random.randint(1, 2**32 - 1)
+            seeds.append(seed)
+            workflow = inject_seed_into_workflow(workflow, seed)
+            workflows.append(workflow)
+        
+        # Queue all workflows at once
+        if progress_callback:
+            progress_callback(0, count, f"Queuing {count} images to ComfyUI...")
+        
+        prompt_ids = []
+        for i, workflow in enumerate(workflows):
+            prompt_id = self.client.queue_workflow(workflow)
+            prompt_ids.append(prompt_id)
             if progress_callback:
-                progress_callback(current_num, count, f"Generating image {current_num}/{count}...")
+                progress_callback(i + 1, count, f"Queued {i + 1}/{count} workflows...")
+        
+        # Wait for all completions and download results
+        results = []
+        completed_count = 0
+        
+        for i, (prompt_id, prompt, seed) in enumerate(zip(prompt_ids, prompts, seeds)):
+            if progress_callback:
+                progress_callback(completed_count, count, f"Waiting for image {i + 1}/{count}...")
             
             try:
-                # Generate unique seed for each image
-                seed = random.randint(1, 2**32 - 1)
+                # Wait for this specific workflow
+                output_files = self.client.wait_for_completion(prompt_id)
                 
-                # Generate image
-                image = self.generate_single(image_paths, prompt, seed)
-                
-                # Save image
-                timestamp = int(time.time())
-                filename = f"{gender}_{theme}_{timestamp}_{seed}.png"
-                filepath = save_dir / filename
-                image.save(filepath, "PNG")
-                
-                results.append((image, prompt, seed))
-                
-                if progress_callback:
-                    progress_callback(current_num, count, f"Completed {current_num}/{count}")
+                # Download the generated image
+                if output_files:
+                    image_data = self.client.download_image(output_files[0])
+                    image = Image.open(io.BytesIO(image_data))
                     
+                    # Save image
+                    timestamp = int(time.time())
+                    filename = f"{gender}_{theme}_{timestamp}_{i}_{seed}.png"
+                    filepath = save_dir / filename
+                    image.save(filepath, "PNG")
+                    
+                    results.append((image, prompt, seed))
+                    completed_count += 1
+                    
+                    if progress_callback:
+                        progress_callback(completed_count, count, f"Completed {completed_count}/{count}")
+                
             except Exception as e:
-                error_msg = f"Error generating image {current_num}: {str(e)}"
+                error_msg = f"Error on image {i + 1}: {str(e)}"
                 if progress_callback:
-                    progress_callback(current_num, count, error_msg)
-                # Continue with next image instead of failing entire batch
+                    progress_callback(completed_count, count, error_msg)
                 continue
         
         return results
+    
+    def generate_batch(
+        self,
+        image_paths: List[Path],
+        gender: str,
+        theme: str,
+        count: int = 15,
+        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        save_dir: Path = None
+    ) -> List[Tuple[Image.Image, str, int]]:
+        """Generate a batch of images (uses queued batch method for efficiency).
+        
+        Args:
+            image_paths: List of paths to 2 uploaded images
+            gender: "male" or "female"
+            theme: Theme name
+            count: Number of images to generate (10-20)
+            progress_callback: Function(current, total, status) to call for progress updates
+            save_dir: Directory to save generated images
+            
+        Returns:
+            List of tuples (image, prompt_used, seed)
+        """
+        # Use the new queued batch method for better performance
+        return self.generate_batch_queued(
+            image_paths=image_paths,
+            gender=gender,
+            theme=theme,
+            count=count,
+            progress_callback=progress_callback,
+            save_dir=save_dir
+        )
     
     def validate_images(self, image_paths: List[Path]) -> Tuple[bool, str]:
         """Validate uploaded images.
