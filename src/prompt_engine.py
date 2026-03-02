@@ -31,10 +31,13 @@ class PromptEngine:
         else:
             with open(prompt_file, "r", encoding="utf-8") as f:
                 content = f.read()
-                # Split by "---" delimiter to separate full multi-line prompts
-                # Each prompt should end with --- on its own line
-                raw_prompts = content.split("---")
-                prompts = [p.strip() for p in raw_prompts if p.strip()]
+                # Parse prompts wrapped in triple quotes
+                # Each prompt should be wrapped in """ ... """
+                import re
+                # Find all content between triple quotes
+                pattern = r'"""(.*?)"""'
+                matches = re.findall(pattern, content, re.DOTALL)
+                prompts = [m.strip() for m in matches if m.strip()]
         
         self._cache[cache_key] = prompts
         return prompts
