@@ -1,0 +1,40 @@
+{
+  "_comment": "PLACEHOLDER - Replace this file with your exported ComfyUI workflow",
+  "instructions": [
+    "1. Open ComfyUI web interface",
+    "2. Build your workflow with:",
+    "   - 2 LoadImage nodes (for user uploads)",
+    "   - 1 CLIPTextEncode or prompt node",
+    "   - IPAdapter/InstantID for face transfer",
+    "   - KSampler for generation",
+    "   - SaveImage node",
+    "3. Click 'Save (API Format)' in the menu",
+    "4. Replace this file with the exported JSON"
+  ],
+  "example_structure": {
+    "1": {
+      "inputs": {
+        "image": "placeholder_face.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "2": {
+      "inputs": {
+        "image": "placeholder_body.png"
+      },
+      "class_type": "LoadImage"
+    },
+    "3": {
+      "inputs": {
+        "text": "placeholder prompt"
+      },
+      "class_type": "CLIPTextEncode"
+    },
+    "4": {
+      "inputs": {
+        "seed": 12345
+      },
+      "class_type": "KSampler"
+    }
+  }
+}
