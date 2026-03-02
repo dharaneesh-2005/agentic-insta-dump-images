@@ -8,7 +8,6 @@ import io
 import base64
 
 from src.batch_generator import BatchGenerator, create_zip_archive
-from src.comfyui_client import ComfyUIClient
 from src.prompt_engine import PromptEngine
 import config
 
@@ -117,12 +116,14 @@ def main():
         # ComfyUI status
         st.subheader("🔌 ComfyUI Status")
         try:
-            client = ComfyUIClient()
-            # Try a simple request to check connection
-            response = client.client.request("GET", f"{config.COMFYUI_BASE_URL}/system_stats")
-            st.success(f"Connected to {config.COMFYUI_BASE_URL}")
+            import requests
+            response = requests.get(f"{config.COMFYUI_BASE_URL}/system_stats", timeout=5)
+            if response.status_code == 200:
+                st.success(f"✅ Connected to {config.COMFYUI_BASE_URL}")
+            else:
+                st.warning(f"⚠️ ComfyUI returned status {response.status_code}")
         except Exception as e:
-            st.error(f"Cannot connect to ComfyUI at {config.COMFYUI_BASE_URL}")
+            st.error(f"❌ Cannot connect to ComfyUI at {config.COMFYUI_BASE_URL}")
             st.info("Make sure ComfyUI is running with --listen flag")
     
     # Main content area
@@ -146,10 +147,10 @@ def main():
         
         # Preview uploaded images
         if uploaded_file_1:
-            st.image(uploaded_file_1, caption="Face Photo Preview", use_column_width=True)
+            st.image(uploaded_file_1, caption="Face Photo Preview", width=None)
         
         if uploaded_file_2:
-            st.image(uploaded_file_2, caption="Body Photo Preview", use_column_width=True)
+            st.image(uploaded_file_2, caption="Body Photo Preview", width=None)
     
     with col2:
         st.subheader("🎨 Selected Style")
@@ -252,7 +253,7 @@ def main():
         cols = st.columns(4)
         for idx, (image, prompt, seed) in enumerate(st.session_state.generated_images):
             with cols[idx % 4]:
-                st.image(image, use_column_width=True)
+                st.image(image, width=None)
                 
                 # Individual download
                 img_buffer = io.BytesIO()
